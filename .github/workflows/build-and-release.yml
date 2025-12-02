@@ -182,10 +182,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: build-java
+    # Run only on push to main branch
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
-      contents: write
-      packages: write
+      contents: write # Required for creating GitHub Releases
+      packages: write # Required for publishing to GitHub Packages
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -196,7 +197,6 @@ jobs:
           distribution: "temurin"
           java-version: "21"
           server-id: github
-          settings-path: ${{ github.workspace }}
 
       - name: Extract Version from pom.xml
         id: extract_version
@@ -219,8 +219,6 @@ jobs:
 
           if [ -z "$JAR_FILE" ]; then
             echo "❌ Error: No main JAR file found!"
-            echo "Available files:"
-            find target/ -type f -name "*.jar"
             exit 1
           fi
 
@@ -257,7 +255,7 @@ jobs:
           </dependency>
           ```
 
-          Ensure you have the GitHub Package registry configured in your `pom.xml` or `settings.xml`.
+          Ensure you have the GitHub Package registry configured in your `pom.xml`.
 
           ## Performance Notes
 
@@ -294,12 +292,10 @@ jobs:
             "${{ env.jar_file }}#goldenera-randomx.jar"
         env:
           GH_TOKEN: ${{ github.token }}
+
       - name: Publish to GitHub Packages
         run: |
           echo "🚀 Publishing JAR to GitHub Packages..."
-
-          # We use deploy:deploy-file to upload the EXACT jar we built (with native libs)
-          # instead of rebuilding it from source.
           mvn deploy:deploy-file \
             -DgroupId=global.goldenera.randomx \
             -DartifactId=goldenera-randomx \
@@ -308,10 +304,9 @@ jobs:
             -Dfile=${{ env.jar_file }} \
             -DpomFile=pom.xml \
             -DrepositoryId=github \
-            -Durl=https://maven.pkg.github.com/GoldenEraGlobal/goldenera-randomx \
-            -Dusername=${{ github.actor }} \
+            -Durl=https://maven.pkg.github.com/goldeneraglobal/goldenera-randomx \
+            -Dusername=x-access-token \
             -Dpassword=${{ secrets.GITHUB_TOKEN }} \
             -DretryFailedDeploymentCount=3
         env:
-          # This token is automatically provided by GitHub Actions
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
