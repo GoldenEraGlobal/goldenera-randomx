@@ -67,7 +67,7 @@ jobs:
 
       - name: Compile RandomX
         run: |
-          cd randomx
+          cd RandomX
           mkdir -p build
           cd build
 
