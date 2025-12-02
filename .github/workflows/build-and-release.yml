@@ -309,6 +309,8 @@ jobs:
             -DpomFile=pom.xml \
             -DrepositoryId=github \
             -Durl=https://maven.pkg.github.com/GoldenEraGlobal/goldenera-randomx \
+            -Dusername=${{ github.actor }} \
+            -Dpassword=${{ secrets.GITHUB_TOKEN }} \
             -DretryFailedDeploymentCount=3
         env:
           # This token is automatically provided by GitHub Actions
