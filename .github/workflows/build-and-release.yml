@@ -294,7 +294,6 @@ jobs:
             "${{ env.jar_file }}#goldenera-randomx.jar"
         env:
           GH_TOKEN: ${{ github.token }}
-
       - name: Publish to GitHub Packages
         run: |
           echo "🚀 Publishing JAR to GitHub Packages..."
