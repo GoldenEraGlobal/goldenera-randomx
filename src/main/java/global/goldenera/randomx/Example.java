@@ -1,0 +1,88 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2022-2030 The XdagJ Developers
+ * Copyright (c) 2025-2030 The GoldenEraGlobal Developers
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+package global.goldenera.randomx;
+
+import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
+import java.util.Set;
+
+/**
+ * Example class demonstrating the usage of RandomX hashing algorithm.
+ * This class shows how to initialize and use the RandomX components to generate
+ * hashes.
+ */
+public class Example {
+
+    /**
+     * Default constructor for the Example class.
+     * This constructor is intentionally empty as this class primarily serves as a
+     * demonstration
+     * with static methods or through its main method.
+     */
+    public Example() {
+        // Default constructor
+    }
+
+    /**
+     * Main method demonstrating the RandomX hashing process.
+     * Shows initialization of RandomX components and hash calculation.
+     *
+     * @param args Command line arguments (not used)
+     */
+    public static void main(String[] args) {
+        // Key (or message) to be hashed
+        String key = "hello goldenera-randomx";
+        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        System.out.println("Input message: " + key);
+
+        // Get recommended RandomX flags for the current CPU
+        Set<RandomXFlag> flags = RandomXUtils.getRecommendedFlags();
+
+        // Allocate RandomX cache with the recommended flags
+        // The key will be set and cache initialized via RandomXTemplate
+        RandomXCache cache = new RandomXCache(flags);
+
+        // Create and configure RandomXTemplate using a builder pattern
+        byte[] hash;
+        try (RandomXTemplate template = RandomXTemplate.builder()
+                .cache(cache) // Provide the cache instance (not yet initialized with key)
+                .miningMode(false) // Set to false for light hashing mode (no dataset)
+                .flags(flags) // Provide the base flags
+                .build()) {
+
+            // Set the key for RandomX operations. This will initialize the cache.
+            template.changeKey(keyBytes);
+
+            // Initialize the template. This creates the VM.
+            template.init();
+            hash = template.calculateHash(keyBytes);
+        } // try-with-resources automatically calls template.close()
+
+        // Format and display the results
+        HexFormat hex = HexFormat.of();
+        System.out.printf("Message: %s%n", key);
+        System.out.printf("Hash: %s%n", hex.formatHex(hash));
+    }
+}
