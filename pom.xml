@@ -51,6 +51,14 @@
         </license>
     </licenses>
 
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/GoldenEraGlobal/goldenera-randomx</url>
+        </repository>
+    </distributionManagement>
+
     <scm>
         <tag>master</tag>
         <url>git@github.com:GoldenEraGlobal/goldenera-randomx.git</url>
