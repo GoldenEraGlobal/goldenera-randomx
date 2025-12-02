@@ -1,0 +1,44 @@
+name: Debug Deploy (FAST)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Create Dummy JAR
+        run: |
+          mkdir -p target
+          echo "This is a dummy JAR for testing" > target/debug-test.jar
+          echo "✅ Dummy JAR created"
+
+      - name: Attempt Deploy to GitHub Packages
+        run: |
+          echo "🚀 Trying to publish dummy JAR..."
+
+          mvn deploy:deploy-file \
+            -DgroupId=global.goldenera.randomx \
+            -DartifactId=goldenera-randomx-debug \
+            -Dversion=0.0.1-DEBUG \
+            -Dpackaging=jar \
+            -Dfile=target/debug-test.jar \
+            -DrepositoryId=github \
+            -Durl=https://maven.pkg.github.com/goldeneraglobal/goldenera-randomx \
+            -Dusername=x-access-token \
+            -Dpassword=${{ secrets.GITHUB_TOKEN }} \
+            -DretryFailedDeploymentCount=3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
