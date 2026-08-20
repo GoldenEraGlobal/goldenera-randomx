@@ -25,3 +25,8 @@ hs_err_pid*
 
 .DS_Store
 .vscode
+._*
+.agents
+.zed
+CLAUDE.md
+AGENTS.md
