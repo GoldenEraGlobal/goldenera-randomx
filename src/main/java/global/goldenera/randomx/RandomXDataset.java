@@ -52,10 +52,13 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class RandomXDataset implements AutoCloseable {
 
+    private static final int MAX_INITIALIZATION_THREADS = 32;
+
     /**
      * Pointer to the allocated RandomX dataset memory.
      */
-    private final Pointer datasetPointer;
+    private volatile Pointer datasetPointer;
+    private int activeUsers;
 
     private final Set<RandomXFlag> flags; // Store flags used for allocation
 
@@ -79,7 +82,7 @@ public class RandomXDataset implements AutoCloseable {
         if (flags == null || flags.isEmpty()) {
             throw new IllegalArgumentException("Flags cannot be null or empty for dataset allocation.");
         }
-        this.flags = flags;
+        this.flags = Set.copyOf(flags);
         int combinedFlags = RandomXFlag.toValue(flags);
         log.debug("Allocating RandomX dataset with flags: {} ({})", flags, combinedFlags);
 
@@ -105,13 +108,18 @@ public class RandomXDataset implements AutoCloseable {
      * @return The number of threads to use for initialization.
      */
     private int getOptimalThreadCount() {
+        int availableProcessors = Math.max(1, Runtime.getRuntime().availableProcessors());
+        int maximum = Math.min(availableProcessors, MAX_INITIALIZATION_THREADS);
         String threadsProp = System.getProperty("randomx.dataset.threads");
         if (threadsProp != null && !threadsProp.isEmpty()) {
             try {
                 int threads = Integer.parseInt(threadsProp);
                 if (threads > 0) {
-                    log.info("Using configured thread count from system property: {}", threads);
-                    return threads;
+                    int boundedThreads = Math.min(threads, maximum);
+                    if (boundedThreads != threads) {
+                        log.warn("Capping randomx.dataset.threads from {} to {}", threads, boundedThreads);
+                    }
+                    return boundedThreads;
                 } else {
                     log.warn("Invalid randomx.dataset.threads value (must be positive): {}, using default",
                             threadsProp);
@@ -120,8 +128,7 @@ public class RandomXDataset implements AutoCloseable {
                 log.warn("Invalid randomx.dataset.threads value (not a number): {}, using default", threadsProp);
             }
         }
-        int availableProcessors = Runtime.getRuntime().availableProcessors();
-        return Math.max(1, availableProcessors / 2);
+        return Math.min(maximum, Math.max(1, availableProcessors / 2));
     }
 
     /**
@@ -134,7 +141,7 @@ public class RandomXDataset implements AutoCloseable {
      * @throws RuntimeException      if initialization is interrupted or fails.
      * @throws IllegalStateException if the dataset is not allocated.
      */
-    public void init(RandomXCache cache) {
+    public synchronized void init(RandomXCache cache) {
         if (datasetPointer == null) {
             throw new IllegalStateException("Dataset is not allocated.");
         }
@@ -170,11 +177,12 @@ public class RandomXDataset implements AutoCloseable {
             }
         });
 
+        List<Future<?>> futures = new ArrayList<>(initThreadCount);
+        Throwable submissionFailure = null;
         try {
             // Calculate items per thread and handle remainder
             long itemsPerThread = totalItems / initThreadCount;
             long remainder = totalItems % initThreadCount;
-            List<Future<?>> futures = new ArrayList<>(initThreadCount);
             long currentItemStart = 0;
 
             // Submit initialization tasks for each thread
@@ -198,48 +206,65 @@ public class RandomXDataset implements AutoCloseable {
                                 new NativeLong(start),
                                 new NativeLong(count));
                         log.debug("{} finished initialization for items [{}, {})", threadName, start, start + count);
-                    } catch (Exception e) {
+                    } catch (RuntimeException | Error e) {
                         log.error("{} failed during initialization for items [{}, {}). Error: {}",
                                 threadName, start, start + count, e.getMessage(), e);
                         // Propagate exception to be caught by future.get()
-                        throw new RuntimeException("Dataset initialization failed in thread " + threadName, e);
+                        throw e;
                     }
                 }));
                 currentItemStart += itemCount;
             }
-
-            // Wait for all threads to complete and check for exceptions
-            for (Future<?> future : futures) {
-                try {
-                    future.get(); // Throws ExecutionException if the task threw an exception
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt(); // Preserve interrupt status
-                    log.error("Dataset initialization interrupted.", e);
-                    throw new RuntimeException("Dataset initialization interrupted", e);
-                } catch (ExecutionException e) {
-                    log.error("Dataset initialization failed.", e.getCause());
-                    // Unwrap the original exception thrown by the task
-                    throw new RuntimeException("Dataset initialization failed", e.getCause());
-                }
-            }
-
-            long durationMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
-            log.info("Dataset initialization completed successfully in {} ms.", durationMillis);
-
+        } catch (RuntimeException | Error failure) {
+            submissionFailure = failure;
         } finally {
-            // Shutdown executor service gracefully
             executor.shutdown();
-            try {
-                // Wait a reasonable time for tasks to finish
-                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                    log.warn("Executor did not terminate in 60 seconds. Forcing shutdown.");
-                    executor.shutdownNow();
+        }
+
+        // Never return while a native initialization call can still be writing to
+        // this dataset. Native RandomX calls are not interruptible, so cancellation
+        // or a timed shutdown would permit a caller to free live native memory.
+        awaitAllWorkers(futures, submissionFailure);
+
+        long durationMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
+        log.info("Dataset initialization completed successfully in {} ms.", durationMillis);
+    }
+
+    static void awaitAllWorkers(List<? extends Future<?>> futures, Throwable initialFailure) {
+        Throwable failure = initialFailure;
+        boolean interrupted = false;
+
+        for (Future<?> future : futures) {
+            boolean completed = false;
+            while (!completed) {
+                try {
+                    future.get();
+                    completed = true;
+                } catch (InterruptedException e) {
+                    interrupted = true;
+                    if (failure == null) {
+                        failure = e;
+                    } else {
+                        failure.addSuppressed(e);
+                    }
+                } catch (ExecutionException e) {
+                    Throwable workerFailure = e.getCause() == null ? e : e.getCause();
+                    if (failure == null) {
+                        failure = workerFailure;
+                    } else if (failure != workerFailure) {
+                        failure.addSuppressed(workerFailure);
+                    }
+                    completed = true;
                 }
-            } catch (InterruptedException e) {
-                log.error("Interrupted while waiting for executor termination.", e);
-                executor.shutdownNow();
-                Thread.currentThread().interrupt(); // Preserve interrupt status
             }
+        }
+
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        if (failure != null) {
+            log.error("Dataset initialization failed after all native workers stopped.", failure);
+            throw new RuntimeException("Dataset initialization failed", failure);
         }
     }
 
@@ -250,10 +275,24 @@ public class RandomXDataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is not allocated.
      */
     public Pointer getDatasetPointer() {
-        if (datasetPointer == null) {
+        Pointer pointer = datasetPointer;
+        if (pointer == null) {
             throw new IllegalStateException("Dataset is not allocated.");
         }
-        return datasetPointer;
+        return pointer;
+    }
+
+    synchronized Pointer retainPointer() {
+        Pointer pointer = getDatasetPointer();
+        activeUsers++;
+        return pointer;
+    }
+
+    synchronized void releasePointer() {
+        if (activeUsers <= 0) {
+            throw new IllegalStateException("RandomX dataset user count underflow.");
+        }
+        activeUsers--;
     }
 
     /**
@@ -261,16 +300,21 @@ public class RandomXDataset implements AutoCloseable {
      * This method is called automatically when using try-with-resources.
      */
     @Override
-    public void close() {
-        if (datasetPointer != null) {
-            log.debug("Releasing RandomX dataset at pointer: {}", Pointer.nativeValue(datasetPointer));
+    public synchronized void close() {
+        if (activeUsers != 0) {
+            throw new IllegalStateException("RandomX dataset is still used by " + activeUsers + " VM(s).");
+        }
+        Pointer pointer = datasetPointer;
+        datasetPointer = null;
+        if (pointer != null) {
+            log.debug("Releasing RandomX dataset at pointer: {}", Pointer.nativeValue(pointer));
             try {
                 // Use RandomXNative for release
-                RandomXNative.randomx_release_dataset(datasetPointer);
+                RandomXNative.randomx_release_dataset(pointer);
                 log.info("RandomX dataset released successfully.");
             } catch (Throwable t) {
                 log.error("Error occurred while releasing RandomX dataset. Pointer: {}",
-                        Pointer.nativeValue(datasetPointer), t);
+                        Pointer.nativeValue(pointer), t);
             }
         }
     }

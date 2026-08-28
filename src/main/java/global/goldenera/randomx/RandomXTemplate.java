@@ -47,7 +47,7 @@ public class RandomXTemplate implements AutoCloseable {
     private RandomXTemplate(boolean miningMode, Set<RandomXFlag> flags, RandomXCache cache, RandomXDataset dataset,
             RandomXVM vm, byte[] currentKey) {
         this.miningMode = miningMode;
-        this.flags = flags;
+        this.flags = Set.copyOf(flags);
         this.cache = cache;
         this.dataset = dataset;
         this.vm = vm;
@@ -106,8 +106,12 @@ public class RandomXTemplate implements AutoCloseable {
      * method,
      * and if in light mode, the cache should be initialized.
      */
-    public void init() {
+    public synchronized void init() {
+        if (vm != null) {
+            throw new IllegalStateException("RandomXTemplate is already initialized.");
+        }
         Set<RandomXFlag> vmFlags = EnumSet.copyOf(flags);
+        RandomXDataset newDataset = null;
         if (miningMode) {
             vmFlags.add(RandomXFlag.FULL_MEM);
             // Ensure cache is initialized with currentKey before creating dataset
@@ -120,22 +124,31 @@ public class RandomXTemplate implements AutoCloseable {
             }
 
             log.debug("Mining mode enabled. Creating and initializing dataset with flags: {}", vmFlags);
-            dataset = new RandomXDataset(vmFlags); // Dataset uses its own flags, usually including FULL_MEM
-            dataset.init(cache); // Dataset initialization depends on an initialized cache
+            newDataset = new RandomXDataset(vmFlags);
+            try {
+                newDataset.init(cache);
+            } catch (RuntimeException | Error failure) {
+                newDataset.close();
+                throw failure;
+            }
         } else {
             vmFlags.remove(RandomXFlag.FULL_MEM);
-            if (dataset != null) {
-                dataset.close(); // Ensure previous dataset is closed if switching modes
-            }
-            dataset = null;
             log.debug("Light mode enabled. Dataset will not be used.");
         }
 
         log.debug("Creating RandomXVM with flags: {} (Cache: {}, Dataset: {})",
                 vmFlags,
                 cache != null ? "Present" : "Null",
-                dataset != null ? "Present" : "Null");
-        vm = new RandomXVM(vmFlags, cache, dataset);
+                newDataset != null ? "Present" : "Null");
+        try {
+            vm = new RandomXVM(vmFlags, cache, newDataset);
+            dataset = newDataset;
+        } catch (RuntimeException | Error failure) {
+            if (newDataset != null) {
+                newDataset.close();
+            }
+            throw failure;
+        }
         log.info("RandomXTemplate initialized. VM created.");
     }
 
@@ -149,7 +162,7 @@ public class RandomXTemplate implements AutoCloseable {
      *            components with.
      * @throws IllegalArgumentException if the key is null or empty.
      */
-    public void changeKey(byte[] key) {
+    public synchronized void changeKey(byte[] key) {
         if (key == null || key.length == 0) {
             throw new IllegalArgumentException("Key cannot be null or empty for changeKey operation.");
         }
@@ -163,80 +176,53 @@ public class RandomXTemplate implements AutoCloseable {
         log.info("Changing RandomX key. Old key hash (if any): {}, New key hash: {}",
                 (this.currentKey != null ? Arrays.hashCode(this.currentKey) : "N/A"), Arrays.hashCode(key));
 
-        // Initialize the cache with the new key.
-        // The cache instance itself is final, but its internal state is changed by
-        // init().
+        if (miningMode && vm != null) {
+            changeFullKey(key);
+            return;
+        }
+
         cache.init(key);
-        this.currentKey = Arrays.copyOf(key, key.length); // Store a copy of the new key.
-
-        // If a VM instance exists, update its cache.
-        // If init() hasn't been called yet, vm will be null. The new cache will be used
-        // when vm is created in init().
         if (vm != null) {
-            log.debug("Updating VM with the new cache.");
             vm.setCache(cache);
-        } else {
-            log.warn("VM is null during changeKey. The new cache will be used upon VM creation in init().");
         }
-
-        // If in mining mode, the dataset also needs to be reinitialized with the new
-        // cache.
-        if (miningMode) {
-            log.debug("Mining mode: Reinitializing dataset due to key change.");
-
-            // Create new dataset first, then close old one to avoid state inconsistency
-            RandomXDataset oldDataset = this.dataset;
-            RandomXDataset newDataset = null;
-
-            try {
-                // The flags for the dataset should include FULL_MEM.
-                Set<RandomXFlag> datasetFlags = EnumSet.copyOf(this.flags); // Start with base flags
-                datasetFlags.add(RandomXFlag.FULL_MEM);
-
-                newDataset = new RandomXDataset(datasetFlags);
-                newDataset.init(cache); // Initialize with the cache that has the new key.
-
-                // Successfully created and initialized, update reference
-                this.dataset = newDataset;
-
-                // Update VM with new dataset if VM exists
-                if (vm != null) {
-                    log.debug("Updating VM with the new dataset.");
-                    vm.setDataset(newDataset);
-                }
-
-                // Now it's safe to close the old dataset
-                if (oldDataset != null) {
-                    try {
-                        oldDataset.close();
-                        log.debug("Old dataset closed successfully.");
-                    } catch (Exception e) {
-                        log.warn("Failed to close old dataset", e);
-                        // Continue anyway since new dataset is already set
-                    }
-                }
-
-            } catch (Exception e) {
-                log.error("Failed to create/initialize new dataset during key change", e);
-                // Cleanup the new dataset if it was created
-                if (newDataset != null) {
-                    try {
-                        newDataset.close();
-                    } catch (Exception cleanupEx) {
-                        log.warn("Failed to cleanup new dataset after initialization failure", cleanupEx);
-                    }
-                }
-                // Keep old dataset if it exists (don't set this.dataset to null)
-                throw new RuntimeException("Failed to reinitialize dataset with new key", e);
-            }
-        } else {
-            // In light mode, ensure dataset is null if it was somehow set
-            if (vm != null && vm.getDataset() != null) {
-                log.debug("Light mode: Ensuring VM dataset is null after key change.");
-                vm.setDataset(null);
-            }
-        }
+        this.currentKey = Arrays.copyOf(key, key.length);
         log.info("RandomX key changed and components reinitialized successfully.");
+    }
+
+    private void changeFullKey(byte[] key) {
+        if (currentKey == null) {
+            throw new IllegalStateException(
+                    "FULL key replacement requires the current key to have been set through changeKey before init.");
+        }
+
+        byte[] previousKey = Arrays.copyOf(currentKey, currentKey.length);
+        RandomXDataset previousDataset = dataset;
+        RandomXDataset replacementDataset = null;
+        try {
+            cache.init(key);
+            Set<RandomXFlag> datasetFlags = EnumSet.copyOf(flags);
+            datasetFlags.add(RandomXFlag.FULL_MEM);
+            replacementDataset = new RandomXDataset(datasetFlags);
+            replacementDataset.init(cache);
+
+            vm.setDataset(replacementDataset);
+            dataset = replacementDataset;
+            currentKey = Arrays.copyOf(key, key.length);
+            if (previousDataset != null) {
+                previousDataset.close();
+            }
+            log.info("FULL RandomX key and dataset changed successfully.");
+        } catch (RuntimeException | Error failure) {
+            if (replacementDataset != null) {
+                replacementDataset.close();
+            }
+            try {
+                cache.init(previousKey);
+            } catch (RuntimeException | Error rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            throw failure;
+        }
     }
 
     /**
@@ -246,7 +232,7 @@ public class RandomXTemplate implements AutoCloseable {
      * @return A 32-byte array containing the calculated hash.
      * @throws IllegalStateException if the VM is not initialized.
      */
-    public byte[] calculateHash(byte[] input) {
+    public synchronized byte[] calculateHash(byte[] input) {
         if (vm == null) {
             throw new IllegalStateException("RandomX VM is not initialized. Call init() first or ensure key is set.");
         }
@@ -254,12 +240,12 @@ public class RandomXTemplate implements AutoCloseable {
     }
 
     /**
-     * Begins a multi-part hash calculation by processing the first input.
+     * Starts the RandomX pipeline for the first independent input.
      * 
-     * @param input Initial input data for the hash calculation.
+     * @param input First complete input, not a streaming fragment.
      * @throws IllegalStateException if the VM is not initialized.
      */
-    public void calculateHashFirst(byte[] input) {
+    public synchronized void calculateHashFirst(byte[] input) {
         if (vm == null) {
             throw new IllegalStateException("RandomX VM is not initialized. Call init() first or ensure key is set.");
         }
@@ -267,13 +253,13 @@ public class RandomXTemplate implements AutoCloseable {
     }
 
     /**
-     * Continues a multi-part hash calculation by processing the next input.
+     * Returns the previous pipeline hash while starting the next independent input.
      * 
-     * @param nextInput Next chunk of input data for the hash calculation.
-     * @return A 32-byte array containing the intermediate hash result.
+     * @param nextInput Next complete input, not a streaming fragment.
+     * @return The hash of the input supplied to the preceding pipeline call.
      * @throws IllegalStateException if the VM is not initialized.
      */
-    public byte[] calculateHashNext(byte[] nextInput) {
+    public synchronized byte[] calculateHashNext(byte[] nextInput) {
         if (vm == null) {
             throw new IllegalStateException("RandomX VM is not initialized. Call init() first or ensure key is set.");
         }
@@ -281,12 +267,12 @@ public class RandomXTemplate implements AutoCloseable {
     }
 
     /**
-     * Finalizes a multi-part hash calculation.
+     * Returns the hash of the final input currently pending in the pipeline.
      * 
      * @return A 32-byte array containing the final hash result.
      * @throws IllegalStateException if the VM is not initialized.
      */
-    public byte[] calculateHashLast() {
+    public synchronized byte[] calculateHashLast() {
         if (vm == null) {
             throw new IllegalStateException("RandomX VM is not initialized. Call init() first or ensure key is set.");
         }
@@ -300,7 +286,7 @@ public class RandomXTemplate implements AutoCloseable {
      * @return A byte array containing the calculated commitment hash.
      * @throws IllegalStateException if the VM is not initialized.
      */
-    public byte[] calculateCommitment(byte[] input) {
+    public synchronized byte[] calculateCommitment(byte[] input) {
         if (vm == null) {
             throw new IllegalStateException("RandomX VM is not initialized. Call init() first or ensure key is set.");
         }
@@ -324,7 +310,7 @@ public class RandomXTemplate implements AutoCloseable {
      * to close one resource does not prevent cleanup of others.
      */
     @Override
-    public void close() {
+    public synchronized void close() {
         log.debug("Closing RandomXTemplate resources...");
 
         // Close VM first (highest level resource)
@@ -335,6 +321,7 @@ public class RandomXTemplate implements AutoCloseable {
             } catch (Exception e) {
                 log.error("Failed to close RandomX VM", e);
             }
+            vm = null;
         }
 
         // Close dataset second
@@ -345,6 +332,7 @@ public class RandomXTemplate implements AutoCloseable {
             } catch (Exception e) {
                 log.error("Failed to close RandomX Dataset", e);
             }
+            dataset = null;
         }
 
         // currentKey does not need explicit closing.

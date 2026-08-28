@@ -40,7 +40,8 @@ import java.util.Set;
  */
 @Slf4j
 public class RandomXCache implements Closeable {
-    private final Pointer cachePointer;
+    private volatile Pointer cachePointer;
+    private int activeUsers;
     private final Set<RandomXFlag> flags;
 
     /**
@@ -59,7 +60,7 @@ public class RandomXCache implements Closeable {
      * @throws RuntimeException if cache allocation fails.
      */
     public RandomXCache(Set<RandomXFlag> flags) {
-        this.flags = flags;
+        this.flags = Set.copyOf(flags);
         int combinedFlags = RandomXFlag.toValue(flags);
         log.debug("Allocating RandomX cache with flags: {} ({})", flags, combinedFlags);
         // Use RandomXNative for allocation
@@ -80,7 +81,7 @@ public class RandomXCache implements Closeable {
      * @throws RuntimeException      if cache initialization fails.
      * @throws IllegalStateException if the cache is not allocated.
      */
-    public void init(byte[] key) {
+    public synchronized void init(byte[] key) {
         if (cachePointer == null) {
             throw new IllegalStateException("Cache is not allocated.");
         }
@@ -89,8 +90,7 @@ public class RandomXCache implements Closeable {
         }
 
         // Use JNA Memory to manage native memory
-        Memory keyPointer = new Memory(key.length);
-        try {
+        try (Memory keyPointer = new Memory(key.length)) {
             keyPointer.write(0, key, 0, key.length);
             log.debug("Initializing RandomX cache with key of length: {}", key.length);
             // Use RandomXNative for initialization
@@ -104,10 +104,6 @@ public class RandomXCache implements Closeable {
             // Note: We don't call close() here to avoid double-free.
             // The caller is responsible for cleanup using try-with-resources.
             throw new RuntimeException("Failed to initialize RandomX cache", e);
-        } finally {
-            // Memory objects do not need to be manually released; JNA's GC will handle it,
-            // but nullifying the reference immediately might help GC reclaim it faster.
-            keyPointer = null; // Help GC
         }
     }
 
@@ -118,10 +114,24 @@ public class RandomXCache implements Closeable {
      * @throws IllegalStateException if the cache is not allocated.
      */
     public Pointer getCachePointer() {
-        if (cachePointer == null) {
+        Pointer pointer = cachePointer;
+        if (pointer == null) {
             throw new IllegalStateException("Cache is not allocated.");
         }
-        return cachePointer;
+        return pointer;
+    }
+
+    synchronized Pointer retainPointer() {
+        Pointer pointer = getCachePointer();
+        activeUsers++;
+        return pointer;
+    }
+
+    synchronized void releasePointer() {
+        if (activeUsers <= 0) {
+            throw new IllegalStateException("RandomX cache user count underflow.");
+        }
+        activeUsers--;
     }
 
     /**
@@ -130,16 +140,21 @@ public class RandomXCache implements Closeable {
      * leaks.
      */
     @Override
-    public void close() {
-        if (cachePointer != null) {
-            log.debug("Releasing RandomX cache at pointer: {}", Pointer.nativeValue(cachePointer));
+    public synchronized void close() {
+        if (activeUsers != 0) {
+            throw new IllegalStateException("RandomX cache is still used by " + activeUsers + " VM(s).");
+        }
+        Pointer pointer = cachePointer;
+        cachePointer = null;
+        if (pointer != null) {
+            log.debug("Releasing RandomX cache at pointer: {}", Pointer.nativeValue(pointer));
             try {
                 // Use RandomXNative for release
-                RandomXNative.randomx_release_cache(cachePointer);
+                RandomXNative.randomx_release_cache(pointer);
                 log.info("RandomX cache released successfully");
             } catch (Throwable t) {
                 log.error("Error occurred while releasing RandomX cache. Pointer: {}",
-                        Pointer.nativeValue(cachePointer), t);
+                        Pointer.nativeValue(pointer), t);
             }
         }
     }

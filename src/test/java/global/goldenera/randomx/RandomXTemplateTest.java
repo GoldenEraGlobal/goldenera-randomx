@@ -32,6 +32,7 @@ import global.goldenera.randomx.RandomXTemplate;
 import global.goldenera.randomx.RandomXUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Set;
 
@@ -41,6 +42,50 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for the RandomXTemplate class.
  */
 public class RandomXTemplateTest {
+
+    @Test
+    void repeatedInitializationIsRejectedInsteadOfLeakingThePreviousVm() {
+        Set<RandomXFlag> flags = RandomXUtils.getRecommendedFlags();
+        flags.remove(RandomXFlag.FULL_MEM);
+        try (RandomXCache cache = new RandomXCache(flags)) {
+            cache.init("repeat-init".getBytes(StandardCharsets.UTF_8));
+            try (RandomXTemplate template = RandomXTemplate.builder()
+                    .cache(cache)
+                    .miningMode(false)
+                    .flags(flags)
+                    .build()) {
+                template.init();
+
+                assertThrows(IllegalStateException.class, template::init);
+            }
+        }
+    }
+
+    @Test
+    void fullKeyChangePublishesReplacementBeforeClosingPreviousDataset() {
+        Set<RandomXFlag> flags = RandomXUtils.getRecommendedFlags();
+        flags.add(RandomXFlag.FULL_MEM);
+        byte[] firstKey = "full-key-one".getBytes(StandardCharsets.UTF_8);
+        byte[] secondKey = "full-key-two".getBytes(StandardCharsets.UTF_8);
+        byte[] input = "full-key-input".getBytes(StandardCharsets.UTF_8);
+        try (RandomXCache cache = new RandomXCache(flags);
+                RandomXTemplate template = RandomXTemplate.builder()
+                        .cache(cache)
+                        .miningMode(true)
+                        .flags(flags)
+                        .build()) {
+            template.changeKey(firstKey);
+            template.init();
+            RandomXDataset previousDataset = template.getDataset();
+            byte[] firstHash = template.calculateHash(input);
+
+            template.changeKey(secondKey);
+
+            assertFalse(Arrays.equals(firstHash, template.calculateHash(input)));
+            assertNotSame(previousDataset, template.getDataset());
+            assertThrows(IllegalStateException.class, previousDataset::getDatasetPointer);
+        }
+    }
 
     @Test
     public void testCalculateHash() {

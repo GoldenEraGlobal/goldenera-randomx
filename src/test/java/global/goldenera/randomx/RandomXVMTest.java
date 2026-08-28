@@ -35,6 +35,7 @@ import global.goldenera.randomx.RandomXVM;
 import org.junit.jupiter.api.Disabled;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -45,6 +46,39 @@ import static org.junit.jupiter.api.Assertions.*;
  * Focuses on VM creation, state changes (cache/dataset), and hash calculations.
  */
 public class RandomXVMTest {
+
+    @Test
+    void closeIsIdempotentAndRejectsPostCloseHashing() {
+        Set<RandomXFlag> flags = RandomXUtils.getRecommendedFlags();
+        flags.remove(RandomXFlag.FULL_MEM);
+        try (RandomXCache cache = new RandomXCache(flags)) {
+            cache.init("close-idempotency".getBytes(StandardCharsets.UTF_8));
+            RandomXVM vm = new RandomXVM(flags, cache, null);
+            assertThrows(IllegalStateException.class, cache::close);
+            vm.close();
+            vm.close();
+
+            assertThrows(IllegalStateException.class, () -> vm.calculateHash(new byte[] { 1 }));
+        }
+    }
+
+    @Test
+    void calculateHashIntoMatchesAllocatingApiAndHonorsOffset() {
+        Set<RandomXFlag> flags = RandomXUtils.getRecommendedFlags();
+        flags.remove(RandomXFlag.FULL_MEM);
+        byte[] input = "hash-into".getBytes(StandardCharsets.UTF_8);
+        try (RandomXCache cache = new RandomXCache(flags)) {
+            cache.init("hash-into-key".getBytes(StandardCharsets.UTF_8));
+            try (RandomXVM vm = new RandomXVM(flags, cache, null)) {
+                byte[] expected = vm.calculateHash(input);
+                byte[] destination = new byte[40];
+
+                vm.calculateHashInto(input, destination, 4);
+
+                assertArrayEquals(expected, Arrays.copyOfRange(destination, 4, 36));
+            }
+        }
+    }
 
     /**
      * Tests the creation of a RandomX VM in light mode (no dataset).
@@ -101,6 +135,8 @@ public class RandomXVMTest {
                 assertEquals(fullModeFlags, vm.getFlags(), "VM flags should match.");
                 assertSame(localCache, vm.getCache(), "VM should use the provided cache.");
                 assertSame(localDataset, vm.getDataset(), "VM should use the provided dataset.");
+                assertThrows(IllegalStateException.class, localCache::close);
+                assertThrows(IllegalStateException.class, localDataset::close);
             }
         }
     }
@@ -151,7 +187,7 @@ public class RandomXVMTest {
 
                 assertNotNull(hash1, "Hash1 should not be null.");
                 assertNotNull(hash2, "Hash2 should not be null.");
-                assertFalse(java.util.Arrays.equals(hash1, hash2),
+                assertFalse(Arrays.equals(hash1, hash2),
                         "Hashes from VMs with different caches (different keys) should differ.");
             }
         }
@@ -192,16 +228,15 @@ public class RandomXVMTest {
                 byte[] hash1 = vm.calculateHash(inputBytes);
                 assertNotNull(hash1, "Hash1 should not be null.");
 
-                vm.setCache(cacheForDs2); // Change cache first
-                vm.setDataset(dataset2); // Then change dataset
+                vm.setDataset(dataset2);
 
                 assertSame(dataset2, vm.getDataset(), "Updated dataset should be dataset2.");
-                assertSame(cacheForDs2, vm.getCache(), "Updated cache for VM should be cacheForDs2.");
+                assertSame(cacheForDs1, vm.getCache(), "FULL VM cache must not be replaced in place.");
 
                 byte[] hash2 = vm.calculateHash(inputBytes);
                 assertNotNull(hash2, "Hash2 should not be null.");
 
-                assertFalse(java.util.Arrays.equals(hash1, hash2),
+                assertFalse(Arrays.equals(hash1, hash2),
                         "Hashes from VMs with different datasets (and their associated caches) should differ.");
             }
         }

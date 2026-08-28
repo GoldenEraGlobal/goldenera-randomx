@@ -39,6 +39,15 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class RandomXCacheTest {
 
+    @Test
+    void closeIsIdempotentAndRejectsPostCloseAccess() {
+        RandomXCache cache = new RandomXCache(RandomXUtils.getRecommendedFlags());
+        cache.close();
+        cache.close();
+
+        assertThrows(IllegalStateException.class, cache::getCachePointer);
+    }
+
     private final byte[] keyBytes = "test_key".getBytes(StandardCharsets.UTF_8);
 
     /**

@@ -24,13 +24,13 @@
  */
 package global.goldenera.randomx;
 
-import java.util.*;
-
-import global.goldenera.randomx.RandomXCache;
-import global.goldenera.randomx.RandomXDataset;
-import global.goldenera.randomx.RandomXFlag;
-import global.goldenera.randomx.RandomXUtils;
-import global.goldenera.randomx.RandomXVM;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * RandomX benchmark program that mimics the C++ benchmark output format.
@@ -123,28 +123,31 @@ public class Benchmark {
                 vmFlags.add(RandomXFlag.FULL_MEM);
             }
 
-            // Create VM directly instead of using RandomXTemplate
-            RandomXVM vm = new RandomXVM(vmFlags, cache, dataset);
+            List<RandomXVM> vms = new ArrayList<>(benchThreads);
+            for (int worker = 0; worker < benchThreads; worker++) {
+                vms.add(new RandomXVM(vmFlags, cache, dataset));
+            }
 
             // Run benchmark
             System.out.printf("Running benchmark (%d nonces) ...%n", nonces);
             long benchStart = System.nanoTime();
 
-            // XOR accumulator for results (like C++ AtomicHash)
             long[] xorResult = new long[4]; // 32 bytes = 4 longs
-
-            for (int nonce = 0; nonce < nonces; nonce++) {
-                // Create block template with nonce (modify at offset 39, little-endian)
-                byte[] input = BLOCK_TEMPLATE.clone();
-                store32LE(input, NONCE_OFFSET, nonce);
-
-                byte[] hash = vm.calculateHash(input);
-
-                // XOR hash into result
-                for (int i = 0; i < 4; i++) {
-                    long hashPart = load64LE(hash, i * 8);
-                    xorResult[i] ^= hashPart;
+            ExecutorService executor = Executors.newFixedThreadPool(benchThreads);
+            try {
+                List<Future<long[]>> futures = new ArrayList<>(benchThreads);
+                for (int worker = 0; worker < benchThreads; worker++) {
+                    int workerIndex = worker;
+                    futures.add(executor.submit(() -> benchmarkWorker(vms.get(workerIndex), workerIndex)));
                 }
+                for (Future<long[]> future : futures) {
+                    long[] workerResult = future.get();
+                    for (int index = 0; index < xorResult.length; index++) {
+                        xorResult[index] ^= workerResult[index];
+                    }
+                }
+            } finally {
+                executor.shutdown();
             }
 
             long benchTime = System.nanoTime() - benchStart;
@@ -168,7 +171,7 @@ public class Benchmark {
             }
 
             // Cleanup
-            vm.close();
+            vms.forEach(RandomXVM::close);
             if (dataset != null)
                 dataset.close();
             cache.close();
@@ -178,6 +181,20 @@ public class Benchmark {
             e.printStackTrace();
             System.exit(1);
         }
+    }
+
+    private static long[] benchmarkWorker(RandomXVM vm, int workerIndex) {
+        byte[] input = BLOCK_TEMPLATE.clone();
+        byte[] hash = new byte[RandomXUtils.RANDOMX_HASH_SIZE];
+        long[] result = new long[4];
+        for (int nonce = workerIndex; nonce < nonces; nonce += benchThreads) {
+            store32LE(input, NONCE_OFFSET, nonce);
+            vm.calculateHashInto(input, hash, 0);
+            for (int index = 0; index < result.length; index++) {
+                result[index] ^= load64LE(hash, index * Long.BYTES);
+            }
+        }
+        return result;
     }
 
     private static void parseArgs(String[] args) {
@@ -215,6 +232,9 @@ public class Benchmark {
                     System.exit(0);
                     break;
             }
+        }
+        if (nonces < 1 || initThreads < 1 || benchThreads < 1) {
+            throw new IllegalArgumentException("Nonces, init threads and benchmark threads must be positive.");
         }
     }
 

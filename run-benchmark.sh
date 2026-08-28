@@ -18,4 +18,4 @@ CP=$(mvn dependency:build-classpath -q -Dmdep.outputFile=/dev/stdout)
 
 $JAVA_CMD \
     -cp "target/test-classes:target/classes:$CP" \
-    io.xdag.crypto.randomx.Benchmark "$@"
+    global.goldenera.randomx.Benchmark "$@"

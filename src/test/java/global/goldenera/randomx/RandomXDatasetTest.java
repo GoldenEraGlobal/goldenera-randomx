@@ -98,6 +98,15 @@ public class RandomXDatasetTest {
                                                                                                            // getDatasetPointer()
     }
 
+    @Test
+    void closeIsIdempotentAndRejectsPostCloseAccess() {
+        dataset.close();
+        dataset.close();
+
+        assertThrows(IllegalStateException.class, dataset::getDatasetPointer);
+        dataset = null;
+    }
+
     /**
      * Tests the initialization of the dataset.
      * Assumes the dataset is allocated and cache is initialized in setUp.

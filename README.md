@@ -106,7 +106,7 @@ To include `goldenera-randomx` in your project, add the following dependency to 
 <dependency>
     <groupId>global.goldenera.randomx</groupId>
     <artifactId>goldenera-randomx</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.2</version>
 </dependency>
 ```
 
@@ -357,10 +357,9 @@ For more details, see [BENCHMARK.md](BENCHMARK.md).
 
 The Java implementation achieves competitive or superior performance through:
 
-1. **ThreadLocal Buffer Reuse**: Eliminates Memory allocation overhead on every hash
+1. **Adaptive ThreadLocal Buffer Reuse**: Starts at 256 bytes per hashing thread and grows only for larger inputs
    ```java
    private static final ThreadLocal<Memory> INPUT_BUFFER = ...
-   private static final ThreadLocal<byte[]> OUTPUT_ARRAY = ...
    ```
 
 2. **Minimal JNA Overhead**: Only 1-2% overhead vs pure C++ due to careful buffer management
