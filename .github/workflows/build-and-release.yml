@@ -61,7 +61,7 @@ jobs:
           # Windows - x86_64
           - os: windows-latest
             arch: x86_64
-            cmake_args: '-G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=default -DBUILD_SHARED_LIBS=ON -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++"'
+            cmake_args: '-G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=default -DBUILD_SHARED_LIBS=ON -DCMAKE_SHARED_LINKER_FLAGS="-static"'
             artifact_name: "librandomx_windows_x86_64.dll"
             output_lib: "librandomx_windows_x86_64.dll"
             source_lib: "librandomx.dll"
