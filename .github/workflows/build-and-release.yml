@@ -61,7 +61,7 @@ jobs:
           # Windows - x86_64
           - os: windows-latest
             arch: x86_64
-            cmake_args: '-G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=default -DBUILD_SHARED_LIBS=ON -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++" -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"'
+            cmake_args: '-G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=default -DBUILD_SHARED_LIBS=ON -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++"'
             artifact_name: "librandomx_windows_x86_64.dll"
             output_lib: "librandomx_windows_x86_64.dll"
             source_lib: "librandomx.dll"
@@ -134,13 +134,22 @@ jobs:
         run: |
           RANDOMX_OBJDUMP="$(g++ -print-prog-name=objdump)"
           "$RANDOMX_OBJDUMP" -p RandomX/build/librandomx.dll | tee randomx-dll-dependencies.txt
-          "$RANDOMX_OBJDUMP" -p RandomX/build/randomx-tests.exe | tee randomx-tests-dependencies.txt
 
           if grep -Eiq 'DLL Name: (libgcc|libstdc\+\+|libwinpthread)' \
-              randomx-dll-dependencies.txt randomx-tests-dependencies.txt; then
+              randomx-dll-dependencies.txt; then
             echo "MinGW runtime must be linked statically into Windows artifacts."
             exit 1
           fi
+        shell: bash
+
+      - name: Stage Windows test runtime
+        if: runner.os == 'Windows'
+        run: |
+          for RANDOMX_RUNTIME_DLL in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            RANDOMX_RUNTIME_PATH="$(g++ -print-file-name="$RANDOMX_RUNTIME_DLL")"
+            test -f "$RANDOMX_RUNTIME_PATH"
+            cp -v "$RANDOMX_RUNTIME_PATH" RandomX/build/
+          done
         shell: bash
 
       - name: Run upstream native tests
