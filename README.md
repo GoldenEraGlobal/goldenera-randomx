@@ -121,7 +121,7 @@ To include `goldenera-randomx` in your project, add the following dependency to 
 <dependency>
     <groupId>global.goldenera.randomx</groupId>
     <artifactId>goldenera-randomx</artifactId>
-    <version>0.0.3</version>
+    <version>0.0.4</version>
 </dependency>
 ```
 
