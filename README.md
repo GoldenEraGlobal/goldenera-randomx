@@ -10,6 +10,9 @@
 
 `goldenera-randomx` is a Java implementation of the RandomX proof-of-work algorithm using JNA (Java Native Access). This library is a community-driven project based on the [GoldenEra](https://github.com/GoldenEraGlobal/goldenera-node) ecosystem.
 
+The bundled native source is RandomX v2.0.1, while GoldenEra intentionally remains on the
+RandomX v1 consensus algorithm (`RANDOMX_FLAG_V2` is not exposed by the Java API).
+
 ### **What is RandomX?**
 
 RandomX is a proof-of-work (PoW) algorithm optimized for general-purpose CPUs. It uses random code execution and memory-hard techniques to minimize the efficiency advantage of specialized hardware like ASICs.
@@ -207,7 +210,7 @@ For more details, see [BENCHMARK.md](BENCHMARK.md).
 - **CPU**: Apple M3 Pro (12 cores, 3.0-4.05 GHz)
 - **RAM**: 36 GB LPDDR5
 - **Test Method**: 3 runs per configuration, averaged
-- **RandomX Version**: v1.2.1
+- **RandomX Version at measurement time**: v1.2.1
 
 #### 1. Core Performance Comparison (Mining Mode)
 
@@ -387,13 +390,13 @@ We welcome contributions to improve the project! Please feel free to submit issu
 
 If you're submitting changes that might affect the native libraries:
 
-1. For platform-specific changes, compile the native library for your platform:
-   * Linux x86_64, macOS x86_64, or Windows x86_64: Follow the compilation steps above.
-   * macOS aarch64 (Apple Silicon): Must be compiled on an Apple Silicon Mac using provided script.
+1. For platform-specific changes, compile the native library for your platform using the instructions above.
 
-2. Commit both your code changes and the updated native library files.
+2. Run the fixed RandomX v1 compatibility vectors against the rebuilt native library.
 
-3. GitHub Actions will build for other platforms and generate a complete multi-platform JAR.
+3. GitHub Actions rebuilds and executes the native and Java compatibility tests on Linux x86_64,
+   Linux aarch64, macOS x86_64, macOS aarch64, and Windows x86_64 before generating the
+   multi-platform JAR.
 
 For discussions or questions, contact the [goldenera-randomx community](https://github.com/GoldenEraGlobal/goldenera-randomx).
 

@@ -24,6 +24,18 @@ jobs:
             artifact_name: "librandomx_linux_x86_64.so"
             output_lib: "librandomx_linux_x86_64.so"
             source_lib: "librandomx.so"
+            test_binary: "randomx-tests"
+            expected_file_pattern: "x86-64|x86_64"
+
+          # Linux - aarch64
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+            cmake_args: '-DCMAKE_BUILD_TYPE=Release -DARCH=default -DBUILD_SHARED_LIBS=ON -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_SHARED_LINKER_FLAGS="-z noexecstack"'
+            artifact_name: "librandomx_linux_aarch64.so"
+            output_lib: "librandomx_linux_aarch64.so"
+            source_lib: "librandomx.so"
+            test_binary: "randomx-tests"
+            expected_file_pattern: "aarch64|ARM64"
 
           # macOS - x86_64
           - os: macos-15-intel # Intel-based runner; macos-13 was retired by GitHub
@@ -32,6 +44,18 @@ jobs:
             artifact_name: "librandomx_macos_x86_64.dylib"
             output_lib: "librandomx_macos_x86_64.dylib"
             source_lib: "librandomx.dylib"
+            test_binary: "randomx-tests"
+            expected_file_pattern: "x86_64"
+
+          # macOS - Apple Silicon
+          - os: macos-15
+            arch: aarch64
+            cmake_args: "-DCMAKE_BUILD_TYPE=Release -DARCH=default -DBUILD_SHARED_LIBS=ON"
+            artifact_name: "librandomx_macos_aarch64.dylib"
+            output_lib: "librandomx_macos_aarch64.dylib"
+            source_lib: "librandomx.dylib"
+            test_binary: "randomx-tests"
+            expected_file_pattern: "arm64"
 
           # Windows - x86_64
           - os: windows-latest
@@ -40,6 +64,8 @@ jobs:
             artifact_name: "librandomx_windows_x86_64.dll"
             output_lib: "librandomx_windows_x86_64.dll"
             source_lib: "librandomx.dll"
+            test_binary: "randomx-tests.exe"
+            expected_file_pattern: "x86-64|x86_64"
 
     steps:
       - name: Checkout code
@@ -102,12 +128,18 @@ jobs:
           ls -la ../../src/main/resources/native/
         shell: bash
 
+      - name: Run upstream native tests
+        run: ./RandomX/build/${{ matrix.test_binary }}
+        shell: bash
+
       - name: Verify library file
         run: |
           echo "Verifying library file in native resources directory"
           if [ -f "src/main/resources/native/${{ matrix.output_lib }}" ]; then
             echo "✅ Library file ${{ matrix.output_lib }} exists"
-            file "src/main/resources/native/${{ matrix.output_lib }}" || true
+            file "src/main/resources/native/${{ matrix.output_lib }}" \
+              | tee native-file-description.txt
+            grep -E '${{ matrix.expected_file_pattern }}' native-file-description.txt
           else
             echo "❌ Library file ${{ matrix.output_lib }} is missing"
             echo "Contents of native directory:"
@@ -115,6 +147,16 @@ jobs:
             exit 1
           fi
         shell: bash
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: "maven"
+
+      - name: Verify Java v1 consensus compatibility
+        run: mvn -Dtest=RandomXConsensusRegressionTest test
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -144,18 +186,6 @@ jobs:
 
           echo "Downloaded artifacts:"
           ls -la src/main/resources/native/
-        shell: bash
-
-      - name: Check for Apple Silicon Library
-        run: |
-          echo "Checking for macOS ARM64 library (should be precompiled locally)"
-          if [ -f "src/main/resources/native/librandomx_macos_aarch64.dylib" ]; then
-            echo "✅ Found precompiled Apple Silicon library"
-          else
-            echo "⚠️ WARNING: Apple Silicon library (librandomx_macos_aarch64.dylib) not found!"
-            echo "⚠️ Please compile this library locally on an Apple Silicon Mac and commit it to the repository."
-            echo "⚠️ Build will continue but the final JAR will not support Apple Silicon Macs."
-          fi
         shell: bash
 
       - name: Set up JDK
@@ -239,7 +269,7 @@ jobs:
 
           ## Native Libraries Included
 
-          - **Linux**: x86_64
+          - **Linux**: x86_64, aarch64
           - **Windows**: x86_64
           - **macOS**: x86_64 (Intel), aarch64 (Apple Silicon)
 

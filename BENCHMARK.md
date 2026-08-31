@@ -76,7 +76,7 @@ cd randomx/build
 The benchmark produces the following output:
 
 ```
-RandomX benchmark v1.2.1 (Java)
+RandomX benchmark v2.0.1 library / v1 algorithm (Java)
  - Argon2 implementation: reference
  - full memory mode (2080 MiB)
  - JIT compiled mode (secure)
@@ -187,4 +187,3 @@ Example:
 1. **Use JIT**: Always enable `--jit --secure` for best performance on macOS ARM64
 2. **Multi-threaded Init**: Use `--init 4` (or more) to speed up dataset initialization
 3. **Warm-up**: First run may be slower due to JVM warm-up
-

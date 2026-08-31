@@ -73,7 +73,7 @@ public class Benchmark {
         parseArgs(args);
 
         // Print banner
-        System.out.println("RandomX benchmark v1.2.1 (Java)");
+        System.out.println("RandomX benchmark v2.0.1 library / v1 algorithm (Java)");
 
         // Configure flags
         Set<RandomXFlag> flags = buildFlags();
@@ -300,7 +300,7 @@ public class Benchmark {
     }
 
     private static void printHelp() {
-        System.out.println("RandomX benchmark v1.2.1 (Java)");
+        System.out.println("RandomX benchmark v2.0.1 library / v1 algorithm (Java)");
         System.out.println("Usage: java Benchmark [OPTIONS]");
         System.out.println("Supported options:");
         System.out.println("  --help        shows this message");
