@@ -170,6 +170,7 @@ jobs:
 
   build-java:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: build-randomx
     steps:
       - name: Checkout code
@@ -203,6 +204,7 @@ jobs:
 
       - name: Run tests
         run: mvn test
+        timeout-minutes: 20
 
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@v4
