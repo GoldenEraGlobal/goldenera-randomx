@@ -11,8 +11,8 @@ fi
 
 echo "🔍 Building RandomX library for Apple Silicon (ARM64)..."
 
-# Navigate to randomx directory
-cd "$(dirname "$0")/../randomx" || exit 1
+# Navigate to RandomX directory
+cd "$(dirname "$0")/../RandomX" || exit 1
 
 # Create build directory if it doesn't exist
 mkdir -p build
@@ -33,5 +33,4 @@ cp -vf librandomx.dylib ../../src/main/resources/native/librandomx_macos_aarch64
 echo "✅ Build complete!"
 echo "Library location: src/main/resources/native/librandomx_macos_aarch64.dylib"
 echo ""
-echo "Please commit this file to your repository before pushing to GitHub."
-echo "This will allow GitHub Actions to package it with the other platform libraries." 
+echo "GitHub Actions rebuilds and validates the release artifact independently."

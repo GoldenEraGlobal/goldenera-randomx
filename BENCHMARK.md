@@ -36,7 +36,7 @@ mvn exec:java -Dexec.mainClass="io.xdag.crypto.randomx.Benchmark" \
 ./run-benchmark.sh --mine --jit --secure --softAes --init 4 --nonces 1000
 
 # C++ (for comparison, if available)
-cd randomx/build
+cd RandomX/build
 ./randomx-benchmark --mine --jit --secure --softAes --init 4 --nonces 1000
 ```
 
@@ -46,7 +46,7 @@ cd randomx/build
 ./run-benchmark.sh --jit --secure --softAes --nonces 1000
 
 # C++ (for comparison)
-cd randomx/build
+cd RandomX/build
 ./randomx-benchmark --verify --jit --secure --softAes --nonces 1000
 ```
 

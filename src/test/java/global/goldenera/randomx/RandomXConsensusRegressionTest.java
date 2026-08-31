@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -83,6 +84,8 @@ class RandomXConsensusRegressionTest {
     @BeforeAll
     void createBaselineVm() {
         lightFlags = lightFlags();
+        assertTrue(lightFlags.contains(RandomXFlag.JIT),
+                "Supported release builds must exercise the RandomX JIT path.");
         cache = new RandomXCache(lightFlags);
         cache.init(BASELINE_KEY);
         vm = new RandomXVM(lightFlags, cache, null);

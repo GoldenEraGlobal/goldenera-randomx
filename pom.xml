@@ -6,7 +6,7 @@
 
     <groupId>global.goldenera.randomx</groupId>
     <artifactId>goldenera-randomx</artifactId>
-    <version>0.0.2</version>
+    <version>0.0.3</version>
 
     <name>goldenera-randomx</name>
     <description>A Java RandomX Library For GoldenEraGlobal</description>
@@ -33,6 +33,7 @@
         <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
         <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
         <maven-javadoc-plugin.version>3.11.1</maven-javadoc-plugin.version>
+        <maven-antrun-plugin.version>3.1.0</maven-antrun-plugin.version>
         <central-publishing-plugin.version>0.6.0</central-publishing-plugin.version>
         <nexus-staging-plugin.version>1.6.13</nexus-staging-plugin.version>
     </properties>
@@ -72,6 +73,45 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>${maven-antrun-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>validate-release-native-bundle</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target unless="skipNativeBundleValidation">
+                                <available file="${project.basedir}/src/main/resources/native/librandomx_linux_x86_64.so"
+                                    property="native.linux.x86_64" />
+                                <available file="${project.basedir}/src/main/resources/native/librandomx_linux_aarch64.so"
+                                    property="native.linux.aarch64" />
+                                <available file="${project.basedir}/src/main/resources/native/librandomx_macos_x86_64.dylib"
+                                    property="native.macos.x86_64" />
+                                <available file="${project.basedir}/src/main/resources/native/librandomx_macos_aarch64.dylib"
+                                    property="native.macos.aarch64" />
+                                <available file="${project.basedir}/src/main/resources/native/librandomx_windows_x86_64.dll"
+                                    property="native.windows.x86_64" />
+                                <fail unless="native.linux.x86_64"
+                                    message="Missing release native library: Linux x86_64" />
+                                <fail unless="native.linux.aarch64"
+                                    message="Missing release native library: Linux aarch64" />
+                                <fail unless="native.macos.x86_64"
+                                    message="Missing release native library: macOS x86_64" />
+                                <fail unless="native.macos.aarch64"
+                                    message="Missing release native library: macOS aarch64" />
+                                <fail unless="native.windows.x86_64"
+                                    message="Missing release native library: Windows x86_64" />
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

@@ -13,6 +13,7 @@ on:
 jobs:
   build-randomx:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -131,6 +132,7 @@ jobs:
       - name: Run upstream native tests
         run: ./RandomX/build/${{ matrix.test_binary }}
         shell: bash
+        timeout-minutes: 10
 
       - name: Verify library file
         run: |
@@ -157,6 +159,7 @@ jobs:
 
       - name: Verify Java v1 consensus compatibility
         run: mvn -Dtest=RandomXConsensusRegressionTest test
+        timeout-minutes: 10
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -53,16 +53,25 @@ Compile and copy the appropriate shared library for your platform:
 
 ##### **Linux x86_64**
 ```bash
-cd randomx
+cd RandomX
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DARCH=native -DBUILD_SHARED_LIBS=ON -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_SHARED_LINKER_FLAGS="-z noexecstack"
 make -j4
 cp -i librandomx.so ../../src/main/resources/native/librandomx_linux_x86_64.so
 ```
 
+##### **Linux aarch64**
+```bash
+cd RandomX
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DARCH=native -DBUILD_SHARED_LIBS=ON -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_SHARED_LINKER_FLAGS="-z noexecstack"
+make -j4
+cp -i librandomx.so ../../src/main/resources/native/librandomx_linux_aarch64.so
+```
+
 ##### **macOS x86_64**
 ```bash
-cd randomx
+cd RandomX
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DARCH=native -DBUILD_SHARED_LIBS=ON
 make -j4
@@ -78,7 +87,7 @@ For Apple Silicon Macs (M1, M2, M3), use the provided script:
 
 Or manually:
 ```bash
-cd randomx
+cd RandomX
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DARCH=native -DBUILD_SHARED_LIBS=ON
 make -j$(sysctl -n hw.ncpu)
@@ -87,7 +96,7 @@ cp -i librandomx.dylib ../../src/main/resources/native/librandomx_macos_aarch64.
 
 ##### **Windows x86_64**
 ```bash
-cd randomx
+cd RandomX
 mkdir build && cd build
 cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=native -DBUILD_SHARED_LIBS=ON
 make -j4
@@ -101,6 +110,9 @@ cd ../../
 mvn clean package
 ```
 
+Release packaging requires all five CI-built native artifacts. For an explicit host-only local
+installation, use `-DskipNativeBundleValidation=true`; such a JAR must not be published.
+
 ### **3. Add Maven Dependency**
 
 To include `goldenera-randomx` in your project, add the following dependency to your `pom.xml`:
@@ -109,7 +121,7 @@ To include `goldenera-randomx` in your project, add the following dependency to 
 <dependency>
     <groupId>global.goldenera.randomx</groupId>
     <artifactId>goldenera-randomx</artifactId>
-    <version>0.0.2</version>
+    <version>0.0.3</version>
 </dependency>
 ```
 
@@ -197,7 +209,7 @@ This library includes a benchmark tool that allows you to compare Java vs C++ im
 ./run-benchmark.sh --mine --jit --secure --softAes --nonces 1000 --init 4
 
 # C++ Benchmark (if available in randomx/build/)
-cd randomx/build
+cd RandomX/build
 ./randomx-benchmark --mine --jit --secure --softAes --nonces 1000 --init 4
 ```
 
