@@ -98,7 +98,7 @@ cp -i librandomx.dylib ../../src/main/resources/native/librandomx_macos_aarch64.
 ```bash
 cd RandomX
 mkdir build && cd build
-cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=native -DBUILD_SHARED_LIBS=ON
+cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=native -DBUILD_SHARED_LIBS=ON -DCMAKE_SHARED_LINKER_FLAGS="-static" -DCMAKE_EXE_LINKER_FLAGS="-static"
 make -j4
 cp -i librandomx.dll ../../src/main/resources/native/librandomx_windows_x86_64.dll
 ```

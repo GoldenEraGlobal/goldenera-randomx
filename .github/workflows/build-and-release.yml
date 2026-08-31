@@ -61,7 +61,7 @@ jobs:
           # Windows - x86_64
           - os: windows-latest
             arch: x86_64
-            cmake_args: '-G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=default -DBUILD_SHARED_LIBS=ON'
+            cmake_args: '-G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DARCH=default -DBUILD_SHARED_LIBS=ON -DCMAKE_SHARED_LINKER_FLAGS="-static" -DCMAKE_EXE_LINKER_FLAGS="-static"'
             artifact_name: "librandomx_windows_x86_64.dll"
             output_lib: "librandomx_windows_x86_64.dll"
             source_lib: "librandomx.dll"
@@ -127,6 +127,20 @@ jobs:
 
           echo "Contents of native resources directory:"
           ls -la ../../src/main/resources/native/
+        shell: bash
+
+      - name: Verify Windows runtime linkage
+        if: runner.os == 'Windows'
+        run: |
+          RANDOMX_OBJDUMP="$(g++ -print-prog-name=objdump)"
+          "$RANDOMX_OBJDUMP" -p RandomX/build/librandomx.dll | tee randomx-dll-dependencies.txt
+          "$RANDOMX_OBJDUMP" -p RandomX/build/randomx-tests.exe | tee randomx-tests-dependencies.txt
+
+          if grep -Eiq 'DLL Name: (libgcc|libstdc\+\+|libwinpthread)' \
+              randomx-dll-dependencies.txt randomx-tests-dependencies.txt; then
+            echo "MinGW runtime must be linked statically into Windows artifacts."
+            exit 1
+          fi
         shell: bash
 
       - name: Run upstream native tests
